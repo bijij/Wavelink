@@ -2,6 +2,8 @@ import inspect
 import sys
 import traceback
 
+from discord.ext.commands.bot import BotBase as BotType
+
 from .client import Client
 from .events import *
 from .node import Node
@@ -24,15 +26,10 @@ class WavelinkBotMixin:
 
     """
     def __new__(cls, *args, **kwargs):
-        old_init = cls.__init__
-
-        def __init__(self, *args, **kwargs):
-            old_init(self, *args, **kwargs)
-            self.wavelink = Client(bot=self)
-
-        setattr(cls, '__init__', __init__)
-
         self = super().__new__(cls)
+        if not isinstance(self, BotType):
+            raise DeprecationWarning(f"WavelinkBotMixin must be used with a discord.py Bot or AutoShardedBot not {type(self)}")
+        self.wavelink = Client(bot=self)
         return self
 
 
