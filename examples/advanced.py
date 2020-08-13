@@ -320,7 +320,7 @@ class PaginatorSource(menus.ListPageSource):
         return True
 
 
-class Music(commands.Cog, wavelink.WavelinkCogMoxin):
+class Music(commands.Cog, wavelink.WavelinkCogMixin):
     """Music Cog."""
 
     def __init__(self, bot: commands.Bot):
@@ -352,13 +352,13 @@ class Music(commands.Cog, wavelink.WavelinkCogMoxin):
         for n in nodes.values():
             await self.bot.wavelink.initiate_node(**n)
 
-    @wavelink.WavelinkCogMoxin.listener()
+    @wavelink.WavelinkCogMixin.listener()
     async def on_node_ready(self, node: wavelink.Node):
         print(f'Node {node.identifier} is ready!')
 
-    @wavelink.WavelinkCogMoxin.listener('on_track_stuck')
-    @wavelink.WavelinkCogMoxin.listener('on_track_end')
-    @wavelink.WavelinkCogMoxin.listener('on_track_exception')
+    @wavelink.WavelinkCogMixin.listener('on_track_stuck')
+    @wavelink.WavelinkCogMixin.listener('on_track_end')
+    @wavelink.WavelinkCogMixin.listener('on_track_exception')
     async def on_player_stop(self, node: wavelink.Node, payload):
         await payload.player.do_next()
 

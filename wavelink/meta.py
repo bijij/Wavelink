@@ -160,7 +160,7 @@ class WavelinkCogMixin:
         """Decorator that adds a coroutine as a Wavelink event listener.
 
         .. note::
-            This must be used within a :class:`wavelink.WavelinkCogMoxin` subclass in order to work.
+            This must be used within a :class:`wavelink.WavelinkCogMixin` subclass in order to work.
 
         Parameters
         ------------
@@ -171,7 +171,7 @@ class WavelinkCogMixin:
         ---------
         .. code:: py
 
-                @wavelink.WavelinkCogMoxin.listener(event="on_node_ready")
+                @wavelink.WavelinkCogMixin.listener(event="on_node_ready")
                 async def node_ready_event(node):
                     print(f'Node {node.indentifier} ready!')
 
