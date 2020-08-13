@@ -144,6 +144,7 @@ class Player(VoiceProtocol):
 
     def __init__(self, bot: Union[commands.Bot, commands.AutoShardedBot], channel: TextChannel):
         self.bot = bot
+        self.client = bot
         self.node = self.bot.wavelink.get_best_node()
 
         if self.node is None:
