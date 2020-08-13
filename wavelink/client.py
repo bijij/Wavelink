@@ -51,15 +51,6 @@ class Client:
             msg = f'wavelink.Client expected type <commands.Bot or commands.AutoShardedBot> not {type(bot)}'
             raise TypeError(msg)
 
-        try:
-            update_handlers = bot.extra_events['on_socket_response']
-        except KeyError:
-            return super().__new__(cls)
-
-        for handler in update_handlers:
-            if handler.__self__.__class__.__qualname__ == 'wavelink.Client':
-                bot.remove_listener(handler, 'on_socket_response')
-
         return super().__new__(cls)
 
     def __init__(self, bot: Union[commands.Bot, commands.AutoShardedBot]):
@@ -68,8 +59,6 @@ class Client:
         self.session = aiohttp.ClientSession(loop=self.loop)
 
         self.nodes = {}
-
-        bot.add_listener(self.update_handler, 'on_socket_response')
 
     @property
     def shard_count(self) -> int:
@@ -322,10 +311,7 @@ class Client:
             if not node:
                 raise InvalidIDProvided(f'A Node with the identifier <{node_id}> does not exist.')
 
-            player = cls(self.bot, guild_id, node, **kwargs)
-            node.players[guild_id] = player
-
-            return player
+            return cls(self.bot, guild_id, node, **kwargs)
 
         shard_options = []
         region_options = []
@@ -342,10 +328,7 @@ class Client:
         if not shard_options and not region_options:
             # Sort by len of node players
             node = sorted(nodes, key=lambda n: len(n.players))[0]
-            player = cls(self.bot, guild_id, node, **kwargs)
-            node.players[guild_id] = player
-
-            return player
+            return cls(self.bot, guild_id, node, **kwargs)
 
         best = [n for n in shard_options if n in region_options]
         if best:
@@ -355,10 +338,7 @@ class Client:
         else:
             node = sorted(region_options, key=lambda n: len(n.players))[0]
 
-        player = cls(self.bot, guild_id, node, **kwargs)
-        node.players[guild_id] = player
-
-        return player
+        return cls(self.bot, guild_id, node, **kwargs)
 
     async def initiate_node(self, host: str, port: int, *, rest_uri: str, password: str, region: str, identifier: str,
                             shard_id: int = None, secure: bool = False, heartbeat: float = None) -> Node:
@@ -441,29 +421,3 @@ class Client:
             raise ZeroConnectedNodes(f'A node with identifier:: {identifier}, does not exist.')
 
         await node.destroy()
-
-    async def update_handler(self, data) -> None:
-        if not data or 't' not in data:
-            return
-
-        if data['t'] == 'VOICE_SERVER_UPDATE':
-            guild_id = int(data['d']['guild_id'])
-
-            try:
-                player = self.players[guild_id]
-            except KeyError:
-                pass
-            else:
-                await player._voice_server_update(data['d'])
-
-        elif data['t'] == 'VOICE_STATE_UPDATE':
-            if int(data['d']['user_id']) != int(self.user_id):
-                return
-
-            guild_id = int(data['d']['guild_id'])
-            try:
-                player = self.players[guild_id]
-            except KeyError:
-                pass
-            else:
-                await player._voice_state_update(data['d'])

@@ -10,5 +10,5 @@ from .eqs import *
 from .events import *
 from .player import *
 from .node import Node
-from .meta import WavelinkMixin
+from .meta import WavelinkBotMixin, WavelinkCogMixin
 from .websocket import WebSocket

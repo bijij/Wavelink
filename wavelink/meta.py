@@ -2,12 +2,42 @@ import inspect
 import sys
 import traceback
 
+from .client import Client
 from .events import *
 from .node import Node
 
 
-class WavelinkMixin:
-    """Wavelink Mixin class.
+class WavelinkBotMixin:
+    """Wavelink Client Mixin class.
+
+    .. warning::
+        You must use this class in conjuction with a discord.py `commands.Bot`.
+
+    Example
+    -------
+    .. code::py
+
+        # WavelinkBotMixin must be used along a discord.py bot.
+        class MyBot(commands.Bot, wavelink.WavelinkBotMixin):
+
+            ...
+
+    """
+    def __new__(cls, *args, **kwargs):
+        old_init = cls.__init__
+
+        def __init__(self, *args, **kwargs):
+            old_init(self, *args, **kwargs)
+            self.wavelink = Client(bot=self)
+
+        setattr(cls, '__init__', __init__)
+
+        self = super().__new__(cls)
+        return self
+
+
+class WavelinkCogMixin:
+    """Wavelink Cog Mixin class.
 
     .. warning::
         You must use this class in conjuction with a discord.py `commands.Cog`.
@@ -16,8 +46,8 @@ class WavelinkMixin:
     ---------
     .. code:: py
 
-        # WavelinkMixin must be used alongside a discord.py cog.
-        class MusicCog(commands.Cog, wavelink.WavelinkMixin):
+        # WavelinkCogMixin must be used alongside a discord.py cog.
+        class MusicCog(commands.Cog, wavelink.WavelinkCogMixin):
 
             @wavelink.Wavelink.listener()
             async def on_node_ready(self, node: wavelink.Node):
@@ -130,7 +160,7 @@ class WavelinkMixin:
         """Decorator that adds a coroutine as a Wavelink event listener.
 
         .. note::
-            This must be used within a :class:`wavelink.WavelinkMixin` subclass in order to work.
+            This must be used within a :class:`wavelink.WavelinkCogMoxin` subclass in order to work.
 
         Parameters
         ------------
@@ -141,7 +171,7 @@ class WavelinkMixin:
         ---------
         .. code:: py
 
-                @wavelink.WavelinkMixin.listener(event="on_node_ready")
+                @wavelink.WavelinkCogMoxin.listener(event="on_node_ready")
                 async def node_ready_event(node):
                     print(f'Node {node.indentifier} ready!')
 
