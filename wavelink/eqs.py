@@ -22,7 +22,7 @@ SOFTWARE.
 """
 import collections
 
-from typing import Dict
+from typing import Dict, List, Tuple, Union
 
 
 class Equalizer:
@@ -43,7 +43,7 @@ class Equalizer:
         A list of tuple pairs containing a band int and gain float.
     """
 
-    def __init__(self, *, levels: list, name: str = 'CustomEqualizer'):
+    def __init__(self, *, levels: List[Tuple[int, float]], name: str = 'CustomEqualizer'):
         self.eq = self._factory(levels)
         self.raw = levels
 
@@ -61,16 +61,14 @@ class Equalizer:
         return self._name
 
     @staticmethod
-    def _factory(levels: list):
-        _dict = collections.defaultdict(int)
-
+    def _factory(levels: List[Tuple[int, float]]) -> List[Dict[str, Union[int, float]]]:
+        _dict: Dict[int, float] = collections.defaultdict(float)
         _dict.update(levels)
-        _dict = [{"band": i, "gain": _dict[i]} for i in range(15)]
 
-        return _dict
+        return [{"band": i, "gain": _dict[i]} for i in range(15)]
 
     @classmethod
-    def build(cls, *, levels: list, name: str = 'CustomEqualizer'):
+    def build(cls, *, levels: List[Tuple[int, float]], name: str = 'CustomEqualizer'):
         """Build a custom Equalizer class with the provided levels.
 
         Parameters

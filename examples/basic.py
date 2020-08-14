@@ -54,8 +54,8 @@ class Music(commands.Cog):
         if not tracks:
             return await ctx.send('Could not find any songs with that query.')
 
-        player = self.bot.wavelink.get_player(ctx.guild.id)
-        if not player.is_connected:
+        player = ctx.guild.voice_client
+        if player is None or not player.is_connected():
             await ctx.invoke(self.connect_)
 
         await ctx.send(f'Added {str(tracks[0])} to the queue.')

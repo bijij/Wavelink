@@ -46,9 +46,9 @@ class Bot(commands.Bot, wavelink.WavelinkClientMixin):
 
 class MusicController:
 
-    def __init__(self, bot, guild_id):
+    def __init__(self, bot, guild):
         self.bot = bot
-        self.guild_id = guild_id
+        self.guild = guild
         self.channel = None
 
         self.next = asyncio.Event()
@@ -62,7 +62,10 @@ class MusicController:
     async def controller_loop(self):
         await self.bot.wait_until_ready()
 
-        player = self.bot.wavelink.get_player(self.guild_id)
+        player = self.guild.voice_client
+        if player is None:
+            return
+
         await player.set_volume(self.volume)
 
         while True:

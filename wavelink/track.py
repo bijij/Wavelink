@@ -23,6 +23,8 @@ SOFTWARE.
 
 import re
 
+from typing import Any, Dict
+
 
 __all__ = ('Track', 'TrackPlaylist')
 
@@ -110,6 +112,6 @@ class TrackPlaylist:
         A list of individual :class:`Track` objects from the playlist.
     """
 
-    def __init__(self, data: dict):
+    def __init__(self, data: Dict[str, Any]):
         self.data = data
         self.tracks = [Track(id_=track['track'], info=track['info']) for track in data['tracks']]

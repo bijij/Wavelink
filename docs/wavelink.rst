@@ -37,10 +37,10 @@ A quick and easy bot example:
     from discord.ext import commands
 
 
-    class Bot(commands.Bot):
+    class Bot(commands.Bot, wavelink.WavelinkClientMixin):
 
         def __init__(self):
-            super(Bot, self).__init__(command_prefix=['audio ', 'wave ','aw '])
+            super(Bot, self).__init__(command_prefix=['audio ', 'wave ', 'aw '])
 
             self.add_cog(Music(self))
 
@@ -64,23 +64,22 @@ A quick and easy bot example:
             # Initiate our nodes. For this example we will use one server.
             # Region should be a discord.py guild.region e.g sydney or us_central (Though this is not technically required)
             await self.bot.wavelink.initiate_node(host='0.0.0.0',
-                                                  port=80,
-                                                  rest_uri='http://0.0.0.0:2333',
-                                                  password='youshallnotpass',
-                                                  identifier='TEST',
-                                                  region='us_central')
+                                                port=2333,
+                                                rest_uri='http://0.0.0.0:2333',
+                                                password='youshallnotpass',
+                                                identifier='TEST',
+                                                region='us_central')
 
         @commands.command(name='connect')
-        async def connect_(self, ctx, *, channel: discord.VoiceChannel=None):
+        async def connect_(self, ctx, *, channel: discord.VoiceChannel = None):
             if not channel:
                 try:
                     channel = ctx.author.voice.channel
                 except AttributeError:
                     raise discord.DiscordException('No channel to join. Please either specify a valid channel or join one.')
 
-            player = self.bot.wavelink.get_player(ctx.guild)
             await ctx.send(f'Connecting to **`{channel.name}`**')
-            await player.connect(channel.id)
+            await channel.connect(cls=wavelink.Player)
 
         @commands.command()
         async def play(self, ctx, *, query: str):
@@ -89,8 +88,8 @@ A quick and easy bot example:
             if not tracks:
                 return await ctx.send('Could not find any songs with that query.')
 
-            player = self.bot.wavelink.get_player(ctx.guild)
-            if not player.is_connected:
+            player = ctx.guild.voice_client
+            if player is None or not player.is_connected():
                 await ctx.invoke(self.connect_)
 
             await ctx.send(f'Added {str(tracks[0])} to the queue.')
@@ -99,6 +98,7 @@ A quick and easy bot example:
 
     bot = Bot()
     bot.run('TOKEN')
+
 
 Client
 ------

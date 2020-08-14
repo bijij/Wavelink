@@ -371,9 +371,9 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
         if member.bot:
             return
 
-        player: Player = self.bot.wavelink.get_player(member.guild, cls=Player)
+        player: Player = member.guild.voice_client
 
-        if not player.channel or not player.context:
+        if player is None or not player.context:
             player.node.players.pop(member.guild.id)
             return
 
@@ -409,9 +409,9 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
 
         We mainly just want to check whether the user is in the players controller channel.
         """
-        player: Player = self.bot.wavelink.get_player(ctx.guild, cls=Player, context=ctx)
+        player: Player = ctx.guild.voice_client
 
-        if player.context:
+        if player is not None and player.context:
             if player.context.channel != ctx.channel:
                 await ctx.send(f'{ctx.author.mention}, you must be in {player.context.channel.mention} for this session.')
                 raise IncorrectChannelError

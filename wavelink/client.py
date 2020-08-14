@@ -92,7 +92,7 @@ class Client:
         return self.client.user.id
 
     @property
-    def players(self) -> dict:
+    def players(self) -> Dict[discord.Guild, Player]:
         """Return the WaveLink clients current players across all nodes.
 
         Returns
