@@ -224,7 +224,7 @@ class Player(discord.VoiceProtocol):
         Stop the Player's currently playing song.
         """
         await self.node._send(op='stop', guildId=str(self.guild.id))
-        __log__.debug(f'PLAYER | Current track stopped:: {str(self.track)} ({self.channel_id})')
+        __log__.debug(f'PLAYER | Current track stopped:: {str(self.track)} ({self.channel.id})')
         self._track = None
 
     async def set_pause(self, pause: bool) -> None:
