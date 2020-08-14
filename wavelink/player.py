@@ -26,7 +26,6 @@ import time
 from typing import Any, Dict, Optional
 
 import discord
-from discord.gateway import DiscordWebSocket
 
 from .eqs import Equalizer
 from .node import Node
@@ -124,7 +123,7 @@ class Player(discord.VoiceProtocol):
             'event': data
         })
 
-        await self._dispatch_voice_update()
+        await self._dispatch_voice_update(self._voice_state)
 
     async def on_voice_state_update(self, data: Dict[str, Any]):
         self._voice_state.update({
@@ -136,36 +135,30 @@ class Player(discord.VoiceProtocol):
             self._voice_state.clear()
             return
 
-        self.channel = discord.utils.get(self.guild.channels, id=int(channel_id))
-        await self._dispatch_voice_update()
+        self.channel = self.guild.get_channel(int(channel_id))
+        await self._dispatch_voice_update({**self._voice_state, 'event': data})
 
-    async def _dispatch_voice_update(self):
+    async def _dispatch_voice_update(self, voice_state: Dict[str, Any]):
         __log__.debug(f'PLAYER | Dispatching voice update:: {self.channel.id}')
         if {'sessionId', 'event'} == self._voice_state.keys():
-            await self.node._send(op='voiceUpdate', guildId=str(self.guild.id), **self._voice_state)
+            await self.node._send(op='voiceUpdate', guildId=str(self.guild.id), **voice_state)
 
     async def hook(self, event) -> None:
         if isinstance(event, (events.TrackEnd, events.TrackException, events.TrackStuck)):
             self._track = None
 
-    def _get_shard_socket(self, shard_id: int) -> DiscordWebSocket:
-        if isinstance(self.client, discord.AutoShardedClient):
-            try:
-                return self.client.shards[shard_id].ws
-            except AttributeError:
-                return self.client.shards[shard_id]._parent.ws
-        else:
-            return self.client.ws
-
     async def connect(self, *, timeout: float, reconnect: bool):
-        await self._get_shard_socket(self.guild.shard_id).voice_state(self.guild.id, str(self.channel.id))
+        await self.guild.change_voice_state(channel=self.channel)
         self._connected = True
         __log__.info(f'PLAYER | Connected to voice channel:: {self.channel.id}')
 
     async def disconnect(self, *, force: bool):
-        __log__.info(f'PLAYER | Disconnected from voice channel:: {self.channel.id}')
-        await self._get_shard_socket(self.guild.shard_id).voice_state(self.guild.id, None)
-        self._connected = False
+        try:
+            __log__.info(f'PLAYER | Disconnected from voice channel:: {self.channel.id}')
+            await self.guild.change_voice_state(channel=None)
+            self._connected = False
+        finally:
+            self.cleanup()
 
     async def move_to(self, channel: discord.VoiceChannel):
         """|coro|
@@ -177,8 +170,8 @@ class Player(discord.VoiceProtocol):
         channel: :class:`abc.Snowflake`
             The channel to move to. Must be a voice channel.
         """
-        self.channel = channel
-        await self.connect(timeout=5, reconnect=True)
+        await self.guild.change_voice_state(channel=channel)
+        __log__.info(f'PLAYER | Moving to voice channel:: {channel.id}')
 
     async def play(self, track: Track, replace: bool = True, start: int = 0, end: int = 0):
         """|coro|
@@ -198,7 +191,7 @@ class Player(discord.VoiceProtocol):
             song to finish playing.
         """
         if replace or not self.is_playing():
-            self.update_state({'state': {}})
+            await self.update_state({'state': {}})
             self._paused = False
         else:
             return
@@ -285,7 +278,7 @@ class Player(discord.VoiceProtocol):
 
     async def seek(self, position: int = 0):
         """|coro|
-        
+
         Seek to the given position in the song.
 
         Parameters
@@ -293,7 +286,6 @@ class Player(discord.VoiceProtocol):
         position: int
             The position as an int in milliseconds to seek to. Could be None to seek to beginning.
         """
-
         await self.node._send(op='seek', guildId=str(self.guild.id), position=position)
 
     async def change_node(self, node: Optional[Node]):
@@ -327,7 +319,7 @@ class Player(discord.VoiceProtocol):
         self.node.players[self.guild.id] = self
 
         if self._voice_state:
-            await self._dispatch_voice_update()
+            await self._dispatch_voice_update(self._voice_state)
 
         if self._track:
             await self.node._send(op='play', guildId=str(self.guild.id), track=self._track.id, startTime=int(self.position))
