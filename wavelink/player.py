@@ -167,6 +167,19 @@ class Player(discord.VoiceProtocol):
         await self._get_shard_socket(self.guild.shard_id).voice_state(self.guild.id, None)
         self._connected = False
 
+    async def move_to(self, channel: discord.VoiceChannel):
+        """|coro|
+
+        Moves the player to a different voice channel.
+
+        Parameters
+        -----------
+        channel: :class:`abc.Snowflake`
+            The channel to move to. Must be a voice channel.
+        """
+        self.channel = channel
+        await self.connect(timeout=5, reconnect=True)
+
     async def play(self, track: Track, replace: bool = True, start: int = 0, end: int = 0):
         """|coro|
 
@@ -207,13 +220,16 @@ class Player(discord.VoiceProtocol):
 
         __log__.debug(f'PLAYER | Started playing track:: {str(track)} ({self.channel.id})')
 
-    def is_connected(self):
+    def is_connected(self) -> bool:
+        """Indicates whether the player is connected to voice."""
         return self._connected
 
-    def is_playing(self):
+    def is_playing(self) -> bool:
+        """Indicates wether a track is currently being played."""
         return self.is_connected() and self._track is not None
 
-    def is_paused(self):
+    def is_paused(self) -> bool:
+        """Indicates wether the currently playing track is paused."""
         return self._paused
 
     async def stop(self):
@@ -268,7 +284,9 @@ class Player(discord.VoiceProtocol):
         __log__.debug(f'PLAYER | Set volume:: {self.volume} ({self.channel.id})')
 
     async def seek(self, position: int = 0):
-        """Seek to the given position in the song.
+        """|coro|
+        
+        Seek to the given position in the song.
 
         Parameters
         ------------

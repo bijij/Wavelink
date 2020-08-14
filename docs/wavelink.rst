@@ -8,7 +8,7 @@ For support using WaveLink, please join the official `support server
 <http://discord.gg/RAKc3HF>`_ on `Discord <https://discordapp.com/>`_.
 
 Installation
----------------------------
+------------
 The following commands are currently the valid ways of installing WaveLink.
 
 **WaveLink requires Python 3.7+**
@@ -26,7 +26,7 @@ The following commands are currently the valid ways of installing WaveLink.
     python3.7 -m pip install Wavelink
 
 Getting Started
-----------------------------
+---------------
 
 A quick and easy bot example:
 
@@ -101,27 +101,27 @@ A quick and easy bot example:
     bot.run('TOKEN')
 
 Client
-----------------------------
+------
 
 .. autoclass:: wavelink.client.Client
     :members:
 
 
 Node
-----------------------------
+----
 
 .. autoclass:: wavelink.node.Node
     :members:
 
 
 Player
-----------------------------
+------
 .. autoclass:: wavelink.player.Player
     :members:
 
 
 Track
-----------------------------
+-----
 .. autoclass:: wavelink.player.Track
     :members:
 
@@ -130,13 +130,13 @@ Track
 
 
 Equalizer
-----------------------------
+---------
 .. autoclass:: wavelink.eqs.Equalizer
     :members:
 
 
 Event Payloads
-----------------------------
+--------------
 
 .. autoclass:: wavelink.events.TrackStart
     :members:
@@ -151,8 +151,15 @@ Event Payloads
     :members:
 
 
+WavelinkClientMixin
+-------------------
+
+.. autoclass:: wavelink.meta.WavelinkClientMixin
+    :members:
+
+
 WavelinkCogMixin
------------------------
+----------------
 
 .. warning::
     Listeners must be used with a `wavelink.WavelinkCogMixin.listener()` decorator to work.
@@ -165,7 +172,7 @@ WavelinkCogMixin
 
 
 Errors
------------------------
+------
 
 .. autoexception:: wavelink.errors.WavelinkException
 
