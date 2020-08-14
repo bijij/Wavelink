@@ -28,8 +28,8 @@ import traceback
 from typing import Any, Dict
 
 from .backoff import ExponentialBackoff
-from .events import *
 from .stats import Stats
+from . import events
 
 
 __log__ = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class WebSocket:
     def __init__(self, **attrs):
         self._node = attrs.get('node')
         self.client = self._node._client
-        self.bot = self.client.bot
+        self.bot = self.client.client
         self.host = attrs.get('host')
         self.port = attrs.get('port')
         self.password = attrs.get('password')
@@ -152,15 +152,15 @@ class WebSocket:
 
     def _get_event_payload(self, name: str, data):
         if name == 'TrackEndEvent':
-            return 'on_track_end', TrackEnd(data)
+            return 'on_track_end', events.TrackEnd(data)
         elif name == 'TrackStartEvent':
-            return 'on_track_start', TrackStart(data)
+            return 'on_track_start', events.TrackStart(data)
         elif name == 'TrackExceptionEvent':
-            return 'on_track_exception', TrackException(data)
+            return 'on_track_exception', events.TrackException(data)
         elif name == 'TrackStuckEvent':
-            return 'on_track_stuck', TrackStuck(data)
+            return 'on_track_stuck', events.TrackStuck(data)
         elif name == 'WebSocketClosedEvent':
-            return 'on_websocket_closed', WebsocketClosed(data)
+            return 'on_websocket_closed', events.WebsocketClosed(data)
 
     async def _send(self, **data):
         if self.is_connected:

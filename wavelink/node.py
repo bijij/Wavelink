@@ -22,13 +22,13 @@ SOFTWARE.
 """
 import inspect
 import logging
-from discord.ext import commands
-from typing import Optional, Union
+import discord
+from typing import Dict, List, Optional, Union
 from urllib.parse import quote
 
-from .errors import *
-from .player import Player, Track, TrackPlaylist
+from .track import Track, TrackPlaylist
 from .websocket import WebSocket
+from . import errors
 
 
 __log__ = logging.getLogger(__name__)
@@ -83,10 +83,9 @@ class Node:
 
         self.shard_id = shard_id
 
-        self.players = {}
+        self.players: Dict[int, 'Player'] = {}
 
         self.session = session
-        self._websocket = None
         self._client = client
 
         self.hook = None
@@ -118,7 +117,7 @@ class Node:
 
         return self.stats.penalty.total
 
-    async def connect(self, bot: Union[commands.Bot, commands.AutoShardedBot]) -> None:
+    async def connect(self, client: discord.Client) -> None:
         self._websocket = WebSocket(node=self,
                                     host=self.host,
                                     port=self.port,
@@ -130,7 +129,7 @@ class Node:
 
         __log__.info(f'NODE | {self.identifier} connected:: {self.__repr__()}')
 
-    async def get_tracks(self, query: str) -> Union[list, TrackPlaylist, None]:
+    async def get_tracks(self, query: str) -> Optional[Union[List[Track], TrackPlaylist]]:
         """|coro|
 
         Search for and return a list of Tracks for the given query.
@@ -192,13 +191,13 @@ class Node:
             data = await resp.json()
 
             if not resp.status == 200:
-                raise BuildTrackError(f'Failed to build track. Status: {data["status"]}, Error: {data["error"]}.'
-                                      f'Check the identfier is correct and try again.')
+                raise errors.BuildTrackError(f'Failed to build track. Status: {data["status"]}, Error: {data["error"]}. \
+Check the identfier is correct and try again.')
 
             track = Track(id_=identifier, info=data)
             return track
 
-    def get_player(self, guild_id: int) -> Optional[Player]:
+    def get_player(self, guild: discord.Guild) -> Optional['Player']:
         """Retrieve a player object associated with the Node.
 
         Parameters
@@ -210,7 +209,7 @@ class Node:
         ---------
         Optional[Player]
         """
-        return self.players.get(guild_id, None)
+        return self.players.get(guild.id, None)
 
     async def on_event(self, event) -> None:
         """Function which dispatches events when triggered on the Node."""
@@ -237,7 +236,7 @@ class Node:
             The hook provided was not a valid callable.
         """
         if not callable(func):
-            raise WavelinkException('Node hook must be a callable.')
+            raise errors.WavelinkException('Node hook must be a callable.')
 
         self.hook = func
 

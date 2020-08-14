@@ -226,13 +226,13 @@ class Music(commands.Cog):
         """Retrieve the currently playing song."""
         player = self.bot.wavelink.get_player(ctx.guild.id)
 
-        if not player.current:
+        if not player.track:
             return await ctx.send('I am not currently playing anything!')
 
         controller = self.get_controller(ctx)
         await controller.now_playing.delete()
 
-        controller.now_playing = await ctx.send(f'Now playing: `{player.current}`')
+        controller.now_playing = await ctx.send(f'Now playing: `{player.track}`')
 
     @commands.command(aliases=['q'])
     async def queue(self, ctx):
@@ -240,7 +240,7 @@ class Music(commands.Cog):
         player = self.bot.wavelink.get_player(ctx.guild.id)
         controller = self.get_controller(ctx)
 
-        if not player.current or not controller.queue._queue:
+        if not player.track or not controller.queue._queue:
             return await ctx.send('There are no songs currently in the queue.', delete_after=20)
 
         upcoming = list(itertools.islice(controller.queue._queue, 0, 5))

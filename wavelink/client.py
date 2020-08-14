@@ -23,13 +23,14 @@ SOFTWARE.
 import aiohttp
 import asyncio
 import logging
-from discord.ext import commands
+import discord
 from functools import partial
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
-from .errors import *
 from .player import Player
 from .node import Node
+from .track import Track, TrackPlaylist
+from . import errors
 
 
 __log__ = logging.getLogger(__name__)
@@ -42,23 +43,31 @@ class Client:
         cls.__qualname__ = 'wavelink.Client'
 
         try:
-            bot = kwargs['bot']
+            bot = kwargs['client']
         except KeyError:
-            msg = 'wavelink.Client: bot is a required keyword only argument which is missing.'
-            raise WavelinkException(msg)
+            msg = 'wavelink.Client: client is a required keyword only argument which is missing.'
+            raise errors.WavelinkException(msg)
 
-        if not isinstance(bot, (commands.Bot, commands.AutoShardedBot)):
-            msg = f'wavelink.Client expected type <commands.Bot or commands.AutoShardedBot> not {type(bot)}'
+        if not isinstance(bot, discord.Client):
+            msg = f'wavelink.Client expected type <discord.Client> not {type(bot)}'
             raise TypeError(msg)
+
+        try:
+            update_handlers = bot.extra_events['on_socket_response']
+        except KeyError:
+            return super().__new__(cls)
+
+        for handler in update_handlers:
+            if handler.__self__.__class__.__qualname__ == 'wavelink.Client':
+                bot.remove_listener(handler, 'on_socket_response')
 
         return super().__new__(cls)
 
-    def __init__(self, bot: Union[commands.Bot, commands.AutoShardedBot]):
-        self.bot = bot
-        self.loop = bot.loop or asyncio.get_event_loop()
+    def __init__(self, *, client: discord.Client):
+        self.client = client
+        self.loop = client.loop or asyncio.get_event_loop()
         self.session = aiohttp.ClientSession(loop=self.loop)
-
-        self.nodes = {}
+        self.nodes: Dict[str, Node] = {}
 
     @property
     def shard_count(self) -> int:
@@ -69,7 +78,7 @@ class Client:
         int:
             An int of the bots shard count.
         """
-        return self.bot.shard_count or 1
+        return self.client.shard_count or 1
 
     @property
     def user_id(self) -> int:
@@ -80,7 +89,7 @@ class Client:
         int:
             The bots user ID.
         """
-        return self.bot.user.id
+        return self.client.user.id
 
     @property
     def players(self) -> dict:
@@ -96,7 +105,7 @@ class Client:
     async def _dispatch_listeners(self, name: str, *args, **kwargs) -> None:
         futures = []
 
-        for cog in self.bot.cogs.values():
+        for cog in self.client.cogs.values():
             try:
                 listeners = cog.__wavelink_listeners__[name]
             except (AttributeError, KeyError):
@@ -119,7 +128,7 @@ class Client:
         if fut.exception():
             self.loop.create_task(cog.on_wavelink_error(listener, fut.exception()))
 
-    async def get_tracks(self, query: str) -> Optional[list]:
+    async def get_tracks(self, query: str) -> Optional[Union[List[Track], TrackPlaylist]]:
         """|coro|
 
         Search for and return a list of Tracks for the given query.
@@ -142,9 +151,9 @@ class Client:
             There are no :class:`wavelink.node.Node`s currently connected.
         """
         node = self.get_best_node()
-        
+
         if node is None:
-            raise ZeroConnectedNodes
+            raise errors.ZeroConnectedNodes
 
         return await node.get_tracks(query)
 
@@ -173,17 +182,17 @@ class Client:
         node = self.get_best_node()
 
         if node is None:
-            raise ZeroConnectedNodes
+            raise errors.ZeroConnectedNodes
 
         return await node.build_track(identifier)
 
-    def _get_players(self) -> dict:
-        players = []
+    def _get_players(self) -> Dict[discord.Guild, Player]:
+        players: List[Player] = []
 
         for node in self.nodes.values():
             players.extend(node.players.values())
 
-        return {player.guild_id: player for player in players}
+        return {player.guild.id: player for player in players}
 
     def get_node(self, identifier: str) -> Optional[Node]:
         """Retrieve a Node with the given identifier.
@@ -199,20 +208,6 @@ class Client:
             The Node matching the given identifier. This could be None if no :class:`wavelink.node.Node` could be found.
         """
         return self.nodes.get(identifier, None)
-
-    def get_best_node(self) -> Optional[Node]:
-        """Return the best available :class:`wavelink.node.Node` across the :class:`.Client`.
-
-        Returns
-        ---------
-        Optional[:class:`wavelink.node.Node`]
-            The best available :class:`wavelink.node.Node` available to the :class:`.Client`.
-        """
-        nodes = [n for n in self.nodes.values() if n.is_available]
-        if not nodes:
-            return None
-
-        return sorted(nodes, key=lambda n: len(n.players))[0]
 
     def get_node_by_region(self, region: str) -> Optional[Node]:
         """Retrieve the best available Node with the given region.
@@ -249,6 +244,26 @@ class Client:
             This could be None if no :class:`wavelink.node.Node` could be found.
         """
         nodes = [n for n in self.nodes.values() if n.shard_id == shard_id and n.is_available]
+        if not nodes:
+            return None
+
+        return sorted(nodes, key=lambda n: len(n.players))[0]
+
+    def get_best_node(self, *, region: Optional[str] = None, shard_id: Optional[int] = None) -> Optional[Node]:
+        """Return the best available :class:`wavelink.node.Node` across the :class:`.Client`.
+
+        Returns
+        ---------
+        Optional[:class:`wavelink.node.Node`]
+            The best available :class:`wavelink.node.Node` available to the :class:`.Client`.
+        """
+        if region is not None:
+            return self.get_node_by_region(region)
+
+        if shard_id is not None:
+            return self.get_node_by_shard(shard_id)
+
+        nodes = [n for n in self.nodes.values() if n.is_available]
         if not nodes:
             return None
 
@@ -295,12 +310,12 @@ class Client:
         else:
             return player
 
-        guild = self.bot.get_guild(guild_id)
+        guild = self.client.get_guild(guild_id)
         if not guild:
-            raise InvalidIDProvided(f'A guild with the id <{guild_id}> can not be located.')
+            raise errors.InvalidIDProvided(f'A guild with the id <{guild_id}> can not be located.')
 
         if not self.nodes:
-            raise ZeroConnectedNodes('There are not any currently connected nodes.')
+            raise errors.ZeroConnectedNodes('There are not any currently connected nodes.')
 
         if not cls:
             cls = Player
@@ -309,9 +324,12 @@ class Client:
             node = self.get_node(identifier=node_id)
 
             if not node:
-                raise InvalidIDProvided(f'A Node with the identifier <{node_id}> does not exist.')
+                raise errors.InvalidIDProvided(f'A Node with the identifier <{node_id}> does not exist.')
 
-            return cls(self.bot, guild_id, node, **kwargs)
+            player = cls(self.client, guild_id, node, **kwargs)
+            node.players[guild_id] = player
+
+            return player
 
         shard_options = []
         region_options = []
@@ -328,7 +346,10 @@ class Client:
         if not shard_options and not region_options:
             # Sort by len of node players
             node = sorted(nodes, key=lambda n: len(n.players))[0]
-            return cls(self.bot, guild_id, node, **kwargs)
+            player = cls(self.client, guild_id, node, **kwargs)
+            node.players[guild_id] = player
+
+            return player
 
         best = [n for n in shard_options if n in region_options]
         if best:
@@ -338,7 +359,10 @@ class Client:
         else:
             node = sorted(region_options, key=lambda n: len(n.players))[0]
 
-        return cls(self.bot, guild_id, node, **kwargs)
+        player = cls(self.client, guild_id, node, **kwargs)
+        node.players[guild_id] = player
+
+        return player
 
     async def initiate_node(self, host: str, port: int, *, rest_uri: str, password: str, region: str, identifier: str,
                             shard_id: int = None, secure: bool = False, heartbeat: float = None) -> Node:
@@ -366,7 +390,7 @@ class Client:
             Whether the websocket should be started with the secure wss protocol.
         heartbeat: Optional[float]
             Send ping message every heartbeat seconds and wait pong response, if pong response is not received then close connection.
-        
+
         Returns
         ---------
         :class:`wavelink.node.Node`
@@ -377,11 +401,11 @@ class Client:
         NodeOccupied
             A node with provided identifier already exists.
         """
-        await self.bot.wait_until_ready()
+        await self.client.wait_until_ready()
 
         if identifier in self.nodes:
             node = self.nodes[identifier]
-            raise NodeOccupied(f'Node with identifier ({identifier}) already exists >> {node.__repr__()}')
+            raise errors.NodeOccupied(f'Node with identifier ({identifier}) already exists >> {node.__repr__()}')
 
         node = Node(host, port, self.shard_count, self.user_id,
                     rest_uri=rest_uri,
@@ -393,8 +417,8 @@ class Client:
                     client=self,
                     secure=secure,
                     heartbeat=heartbeat)
-        
-        await node.connect(bot=self.bot)
+
+        await node.connect(client=self.client)
 
         node.available = True
         self.nodes[identifier] = node
@@ -402,22 +426,12 @@ class Client:
         __log__.info(f'CLIENT | New node initiated:: {node.__repr__()} ')
         return node
 
-    async def destroy_node(self, *, identifier: str) -> None:
+    async def destroy_node(self, *, node: Node) -> None:
         """Destroy the node and it's players.
 
         Parameters
         ------------
-        identifier: str
-            The identifier belonging to the node you wish to destroy.
-
-        Raises
-        --------
-        ZeroConnectedNodes
-            The provided identifier does not belong to any connected nodes.
+        node: :class:`wavelink.node.Node`
+            The node you wish to destroy.
         """
-        try:
-            node = self.nodes[identifier]
-        except KeyError:
-            raise ZeroConnectedNodes(f'A node with identifier:: {identifier}, does not exist.')
-
         await node.destroy()

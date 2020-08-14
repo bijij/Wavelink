@@ -21,6 +21,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+from typing import Any, Dict
+
 __all__ = ('TrackEnd',
            'TrackException',
            'TrackStuck',
@@ -91,10 +93,10 @@ class TrackStuck:
 
     __slots__ = ('track', 'player', 'threshold')
 
-    def __init__(self, data: dict):
+    def __init__(self, data: Dict[str, Any]):
         self.track = data.get('track')
         self.player = data.get('player')
-        self.threshold = int(data.get('thresholdMs'))
+        self.threshold = int(data['thresholdMs'])
 
     def __str__(self):
         return 'TrackStuckEvent'

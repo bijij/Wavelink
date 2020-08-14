@@ -97,7 +97,7 @@ A quick and easy bot example:
                 except AttributeError:
                     raise discord.DiscordException('No channel to join. Please either specify a valid channel or join one.')
 
-            player = self.bot.wavelink.get_player(ctx.guild.id)
+            player = self.bot.wavelink.get_player(ctx.guild)
             await ctx.send(f'Connecting to **`{channel.name}`**')
             await player.connect(channel.id)
 
@@ -108,7 +108,7 @@ A quick and easy bot example:
             if not tracks:
                 return await ctx.send('Could not find any songs with that query.')
 
-            player = self.bot.wavelink.get_player(ctx.guild.id)
+            player = self.bot.wavelink.get_player(ctx.guild)
             if not player.is_connected:
                 await ctx.invoke(self.connect_)
 

@@ -22,6 +22,8 @@ SOFTWARE.
 """
 import collections
 
+from typing import Dict
+
 
 class Equalizer:
     """Class representing a usable equalizer.
@@ -40,6 +42,7 @@ class Equalizer:
     raw: list
         A list of tuple pairs containing a band int and gain float.
     """
+
     def __init__(self, *, levels: list, name: str = 'CustomEqualizer'):
         self.eq = self._factory(levels)
         self.raw = levels

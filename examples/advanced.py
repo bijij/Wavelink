@@ -142,7 +142,7 @@ class Player(wavelink.Player):
 
     def build_embed(self) -> typing.Optional[discord.Embed]:
         """Method which builds our players controller embed."""
-        track = self.current
+        track = self.track
         if not track:
             return
 
@@ -367,7 +367,7 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
         if member.bot:
             return
 
-        player: Player = self.bot.wavelink.get_player(member.guild.id, cls=Player)
+        player: Player = self.bot.wavelink.get_player(member.guild, cls=Player)
 
         if not player.channel_id or not player.context:
             player.node.players.pop(member.guild.id)
@@ -407,7 +407,7 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
 
         We mainly just want to check whether the user is in the players controller channel.
         """
-        player: Player = self.bot.wavelink.get_player(ctx.guild.id, cls=Player, context=ctx)
+        player: Player = self.bot.wavelink.get_player(ctx.guild, cls=Player, context=ctx)
 
         if player.context:
             if player.context.channel != ctx.channel:
@@ -433,7 +433,7 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
 
     def required(self, ctx: commands.Context):
         """Method which returns required votes based on amount of members in a channel."""
-        player: Player = self.bot.wavelink.get_player(guild_id=ctx.guild.id, cls=Player, context=ctx)
+        player: Player = self.bot.wavelink.get_player(guild=ctx.guild, cls=Player, context=ctx)
         channel = self.bot.get_channel(int(player.channel_id))
         required = math.ceil((len(channel.members) - 1) / 2.5)
 
@@ -445,14 +445,14 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
 
     def is_privileged(self, ctx: commands.Context):
         """Check whether the user is an Admin or DJ."""
-        player: Player = self.bot.wavelink.get_player(guild_id=ctx.guild.id, cls=Player, context=ctx)
+        player: Player = self.bot.wavelink.get_player(guild=ctx.guild, cls=Player, context=ctx)
 
         return player.dj == ctx.author or ctx.author.guild_permissions.kick_members
 
     @commands.command()
     async def connect(self, ctx: commands.Context, *, channel: discord.VoiceChannel = None):
         """Connect to a voice channel."""
-        player: Player = self.bot.wavelink.get_player(guild_id=ctx.guild.id, cls=Player, context=ctx)
+        player: Player = self.bot.wavelink.get_player(guild=ctx.guild, cls=Player, context=ctx)
 
         if player.is_connected:
             return
@@ -466,7 +466,7 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
     @commands.command()
     async def play(self, ctx: commands.Context, *, query: str):
         """Play or queue a song with the given query."""
-        player: Player = self.bot.wavelink.get_player(guild_id=ctx.guild.id, cls=Player, context=ctx)
+        player: Player = self.bot.wavelink.get_player(guild=ctx.guild, cls=Player, context=ctx)
 
         if not player.is_connected:
             await ctx.invoke(self.connect)
@@ -556,7 +556,7 @@ class Music(commands.Cog, wavelink.WavelinkCogMixin):
 
             return await player.stop()
 
-        if ctx.author == player.current.requester:
+        if ctx.author == player.track.requester:
             await ctx.send('The song requester has skipped the song.', delete_after=10)
             player.skip_votes.clear()
 

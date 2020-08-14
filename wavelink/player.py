@@ -22,260 +22,152 @@ SOFTWARE.
 """
 import logging
 import time
-import re
-from discord.ext import commands
+
+from typing import Any, Dict, Optional
+
+import discord
 from discord.gateway import DiscordWebSocket
-from discord.guild import TextChannel
-from discord.voice_client import VoiceProtocol
-from typing import Optional, Union
-from .errors import *
-from .eqs import *
-from .events import *
+
+from .eqs import Equalizer
+from .node import Node
+from .track import Track
+from . import errors, events
 
 
-__all__ = ('Track', 'TrackPlaylist', 'Player')
+__all__ = ('Player')
 __log__ = logging.getLogger(__name__)
 
 
-class Track:
-    """Wavelink Tack object.
-
-    Attributes
-    ------------
-    id: str
-        The Base64 Track ID.
-    info: dict
-        The raw track info.
-    title: str
-        The track title.
-    identifier: Optional[str]
-        The tracks identifier. could be None depending on track type.
-    ytid: Optional[str]
-        The tracks YouTube ID. Could be None if ytsearch was not used.
-    length:
-        The duration of the track.
-    duration:
-        Alias to length.
-    uri: Optional[str]
-        The tracks URI. Could be None.
-    author: Optional[str]
-        The author of the track. Could be None
-    is_stream: bool
-        Indicated whether the track is a stream or not.
-    thumb: Optional[str]
-        The thumbnail URL associated with the track. Could be None.
-    """
-
-    __slots__ = ('id',
-                 'info',
-                 'query',
-                 'title',
-                 'identifier',
-                 'ytid',
-                 'length',
-                 'duration',
-                 'uri',
-                 'author',
-                 'is_stream',
-                 'dead',
-                 'thumb')
-
-    def __init__(self, id_, info: dict, query: str = None):
-        self.id = id_
-        self.info = info
-        self.query = query
-
-        self.title = info.get('title')
-        self.identifier = info.get('identifier')
-        self.ytid = self.identifier if re.match(r"^[a-zA-Z0-9_-]{11}$", self.identifier) else None
-        self.length = info.get('length')
-        self.duration = self.length
-        self.uri = info.get('uri')
-        self.author = info.get('author')
-
-        self.is_stream = info.get('isStream')
-        self.dead = False
-
-        if self.ytid:
-            self.thumb = f"https://img.youtube.com/vi/{self.ytid}/maxresdefault.jpg"
-        else:
-            self.thumb = None
-
-    def __str__(self):
-        return self.title
-
-    @property
-    def is_dead(self):
-        return self.dead
-
-
-class TrackPlaylist:
-    """Track Playlist object.
-
-    Attributes
-    ------------
-    data: dict
-        The raw playlist info dict.
-    tracks: list
-        A list of individual :class:`Track` objects from the playlist.
-    """
-
-    def __init__(self, data: dict):
-        self.data = data
-        self.tracks = [Track(id_=track['track'], info=track['info']) for track in data['tracks']]
-
-
-class Player(VoiceProtocol):
+class Player(discord.VoiceProtocol):
     """Wavelink Player class.
 
     Attributes
-    ------------
-    bot: Union[discord.ext.commands.Bot, discord.ext.commands.AutoShardedBot]
-        The discord Bot instance.
-    guild_id: int
-        The guild ID the player is connected to.
+    ----------
+    client: :class:`discord.Client`
+        the discord client instance.
     node: :class:`wavelink.node.Node`
-        The node the player belongs to.
+        the node the player belongs to.
+    channel: discord.VoiceChannel
+        the channel the player is connected to.
     volume: int
-        The players volume.
-    channel_id: int
-        The channel the player is connected to. Could be None if the player is not connected.
+        the players volume.
     """
 
-    def __init__(self, bot: Union[commands.Bot, commands.AutoShardedBot], channel: TextChannel):
-        self.bot = bot
-        self.client = bot
-        self.node = self.bot.wavelink.get_best_node()
+    def __init__(self, client: discord.Client, channel: discord.VoiceChannel):
+        super().__init__(client, channel)
 
-        if self.node is None:
-            raise ZeroConnectedNodes('Could not find a node to connect with.')
+        node = self.client.wavelink.get_best_node()
+        if node is None:
+            raise errors.ZeroConnectedNodes('Could not find a node to connect with.')
 
-        self.guild = channel.guild
-        self.channel = channel
+        self.node: Node = node
         self.node.players[self.guild.id] = self
+        self._voice_state: Dict[str, Any] = {}
+        self._connected = False
 
-        self.last_update = None
-        self.last_position = None
-        self.position_timestamp = None
-
-        self._voice_state = {}
+        self.last_update: Optional[float] = None
+        self.last_position: Optional[float] = None
+        self.position_timestamp: Optional[float] = None
 
         self.volume = 100
-        self.paused = False
-        self.current = None
+        self._paused = False
+        self._track: Optional[Track] = None
         self._equalizer = Equalizer.flat()
 
     @property
-    def equalizer(self):
+    def guild(self):
+        return self.channel.guild
+
+    @property
+    def user(self):
+        return self.client.user
+
+    @property
+    def equalizer(self) -> Equalizer:
         """The currently applied Equalizer."""
         return self._equalizer
 
     @property
-    def eq(self):
+    def eq(self) -> Equalizer:
         """Alias to :func:`equalizer`."""
         return self.equalizer
 
     @property
-    def is_connected(self) -> bool:
-        """Returns whether the player is connected to a voicechannel or not."""
-        return self.channel is not None
-
-    @property
-    def is_playing(self) -> bool:
-        """Returns whether or not the player is currently playing."""
-        return self.is_connected and self.current is not None
-
-    @property
-    def is_paused(self) -> bool:
-        """Returns whether or not the player is paused."""
-        return self.paused
+    def track(self) -> Optional[Track]:
+        return self._track
 
     @property
     def position(self):
-        if not self.is_playing:
+        if not self.is_playing():
             return 0
 
-        if not self.current:
-            return 0
-
-        if self.paused:
-            return min(self.last_position, self.current.duration)
+        if self.is_paused():
+            return min(self.last_position, self.track.duration)
 
         difference = (time.time() * 1000) - self.last_update
         position = self.last_position + difference
 
-        if position > self.current.duration:
+        if position > self.track.duration:
             return 0
 
-        return min(position, self.current.duration)
+        return min(position, self.track.duration)
 
-    async def update_state(self, state: dict) -> None:
+    async def update_state(self, state: Dict[str, Any]):
         state = state['state']
 
         self.last_update = time.time() * 1000
         self.last_position = state.get('position', 0)
         self.position_timestamp = state.get('time', 0)
 
-    async def on_voice_server_update(self, data) -> None:
+    async def on_voice_server_update(self, data: Dict[str, Any]):
         self._voice_state.update({
             'event': data
         })
 
         await self._dispatch_voice_update()
 
-    async def on_voice_state_update(self, data) -> None:
+    async def on_voice_state_update(self, data: Dict[str, Any]):
         self._voice_state.update({
             'sessionId': data['session_id']
         })
 
         channel_id = data['channel_id']
-
         if not channel_id:  # We're disconnecting
             self._voice_state.clear()
             return
 
-        self.channel = self.bot.get_channel(int(channel_id))
+        self.channel = discord.utils.get(self.guild.channels, id=int(channel_id))
         await self._dispatch_voice_update()
 
-    async def _dispatch_voice_update(self) -> None:
+    async def _dispatch_voice_update(self):
         __log__.debug(f'PLAYER | Dispatching voice update:: {self.channel.id}')
         if {'sessionId', 'event'} == self._voice_state.keys():
             await self.node._send(op='voiceUpdate', guildId=str(self.guild.id), **self._voice_state)
 
     async def hook(self, event) -> None:
-        if isinstance(event, (TrackEnd, TrackException, TrackStuck)):
-            self.current = None
+        if isinstance(event, (events.TrackEnd, events.TrackException, events.TrackStuck)):
+            self._track = None
 
-    def _get_shard_socket(self, shard_id: int) -> Optional[DiscordWebSocket]:
-        if isinstance(self.bot, commands.AutoShardedBot):
+    def _get_shard_socket(self, shard_id: int) -> DiscordWebSocket:
+        if isinstance(self.client, discord.AutoShardedClient):
             try:
-                return self.bot.shards[shard_id].ws
+                return self.client.shards[shard_id].ws
             except AttributeError:
-                return self.bot.shards[shard_id]._parent.ws
-
-        if self.bot.shard_id is None or self.bot.shard_id == shard_id:
-            return self.bot.ws
-        return None
+                return self.client.shards[shard_id]._parent.ws
+        else:
+            return self.client.ws
 
     async def connect(self, *, timeout: float, reconnect: bool):
-        """|coro|
-
-        Connect to a Discord Voice Channel.
-        """
         await self._get_shard_socket(self.guild.shard_id).voice_state(self.guild.id, str(self.channel.id))
+        self._connected = True
         __log__.info(f'PLAYER | Connected to voice channel:: {self.channel.id}')
 
-    async def disconnect(self, *, force: bool) -> None:
-        """|coro|
-
-        Disconnect from a Discord Voice Channel.
-        """
+    async def disconnect(self, *, force: bool):
         __log__.info(f'PLAYER | Disconnected from voice channel:: {self.channel.id}')
         await self._get_shard_socket(self.guild.shard_id).voice_state(self.guild.id, None)
-        self.cleanup()
-        self.channel = None
+        self._connected = False
 
-    async def play(self, track: Track, *, replace: bool = True, start: int = 0, end: int = 0) -> None:
+    async def play(self, track: Track, replace: bool = True, start: int = 0, end: int = 0):
         """|coro|
 
         Play a WaveLink Track.
@@ -292,17 +184,17 @@ class Player(VoiceProtocol):
             The position to end the track on in milliseconds. By default this always allows the current
             song to finish playing.
         """
-        if replace or not self.is_playing:
+        if replace or not self.is_playing():
             self.last_update = 0
             self.last_position = 0
             self.position_timestamp = 0
-            self.paused = False
+            self._paused = False
         else:
             return
 
         no_replace = not replace
 
-        self.current = track
+        self._track = track
 
         payload = {'op': 'play',
                    'guildId': str(self.guild.id),
@@ -317,48 +209,23 @@ class Player(VoiceProtocol):
 
         __log__.debug(f'PLAYER | Started playing track:: {str(track)} ({self.channel.id})')
 
-    async def stop(self) -> None:
+    def is_connected(self):
+        return self._connected
+
+    def is_playing(self):
+        return self.is_connected() and self._track is not None
+
+    def is_paused(self):
+        return self._paused
+
+    async def stop(self):
         """|coro|
 
         Stop the Player's currently playing song.
         """
         await self.node._send(op='stop', guildId=str(self.guild.id))
-        __log__.debug(f'PLAYER | Current track stopped:: {str(self.current)} ({self.channel.id})')
-        self.current = None
-
-    async def destroy(self) -> None:
-        """|coro|
-
-        Stop the player, and remove any internal references to it.
-        """
-        await self.stop()
-        await self.disconnect()
-
-        await self.node._send(op='destroy', guildId=str(self.guild.id))
-        del self.node.players[self.guild.id]
-
-    async def set_eq(self, equalizer: Equalizer) -> None:
-        """|coro|
-
-        Set the Players Equalizer.
-
-        .. versionchanged:: 0.5.0
-            set_eq now accepts an :class:`Equalizer` instead of raw band/gain pairs.
-
-        Parameters
-        ------------
-        equalizer: :class:`Equalizer`
-            The Equalizer to set.
-        """
-        await self.node._send(op='equalizer', guildId=str(self.guild.id), bands=equalizer.eq)
-        self._equalizer = equalizer
-
-    async def set_equalizer(self, equalizer: Equalizer) -> None:
-        """|coro|
-
-        An alias to :func:`set_eq`.
-        """
-        await self.set_eq(equalizer)
+        __log__.debug(f'PLAYER | Current track stopped:: {str(self.track)} ({self.channel_id})')
+        self._track = None
 
     async def set_pause(self, pause: bool) -> None:
         """|coro|
@@ -371,24 +238,38 @@ class Player(VoiceProtocol):
             A bool indicating if the player's paused state should be set to True or False.
         """
         await self.node._send(op='pause', guildId=str(self.guild.id), pause=pause)
-        self.paused = pause
-        __log__.debug(f'PLAYER | Set pause:: {self.paused} ({self.channel.id})')
+        self._paused = pause
+        __log__.info(f'PLAYER | Set pause:: {self._paused} ({self.channel.id})')
 
-    async def set_volume(self, vol: int) -> None:
+    async def pause(self):
+        """|coro|
+
+        Pauses the player if it was playing.
+        """
+        await self.set_pause(True)
+
+    async def resume(self):
+        """|coro|
+
+        Resumes the player if it was paused.
+        """
+        await self.set_pause(False)
+
+    async def set_volume(self, volume: int):
         """|coro|
 
         Set the player's volume, between 0 and 1000.
 
         Parameters
         ------------
-        vol: int
+        volume: int
             The volume to set the player to.
         """
-        self.volume = max(min(vol, 1000), 0)
+        self.volume = max(min(volume, 1000), 0)
         await self.node._send(op='volume', guildId=str(self.guild.id), volume=self.volume)
         __log__.debug(f'PLAYER | Set volume:: {self.volume} ({self.channel.id})')
 
-    async def seek(self, position: int = 0) -> None:
+    async def seek(self, position: int = 0):
         """Seek to the given position in the song.
 
         Parameters
@@ -399,7 +280,7 @@ class Player(VoiceProtocol):
 
         await self.node._send(op='seek', guildId=str(self.guild.id), position=position)
 
-    async def change_node(self, identifier: str = None) -> None:
+    async def change_node(self, node: Optional[Node]):
         """|coro|
 
         Change the players current :class:`wavelink.node.Node`. Useful when a Node fails or when changing regions.
@@ -407,53 +288,37 @@ class Player(VoiceProtocol):
 
         Parameters
         ------------
-        Optional[identifier: str]
-            An optional Node identifier to change to. If None, the next best available Node will be found.
+        Optional[Node]
+            The node to change to. If None, the next best available Node will be found.
         """
         client = self.node._client
 
-        if identifier:
-            node = client.get_node(identifier)
-
-            if not node:
-                raise WavelinkException(f'No Nodes matching identifier:: {identifier}')
-            elif node == self.node:
-                raise WavelinkException('Node identifiers must not be the same while changing.')
+        if node is not None:
+            if node == self.node:
+                raise errors.WavelinkException('Player is already on this node.')
         else:
             self.node.close()
-            node = None
+            node = client.get_best_node(region=self.node.region, shard_id=self.node.shard_id)
+            self.node.open()
+            if node is None:
+                raise errors.WavelinkException('No Nodes available for changeover.')
 
-            if self.node.region:
-                node = client.get_node_by_region(self.node.region)
-
-            if not node and self.node.shard_id:
-                node = client.get_node_by_shard(self.node.shard_id)
-
-            if not node:
-                node = client.get_best_node()
-
-            if not node:
-                self.node.open()
-                raise WavelinkException('No Nodes available for changeover.')
-
-        self.node.open()
-
-        old = self.node
-        del old.players[self.guild.id]
-        await old._send(op='destroy', guildId=str(self.guild.id))
+        old_node = self.node
+        del old_node.players[self.guild.id]
+        await old_node._send(op='destroy', guildId=str(self.guild.id))
 
         self.node = node
-        self.node.players[int(self.guild.id)] = self
+        self.node.players[self.guild.id] = self
 
         if self._voice_state:
             await self._dispatch_voice_update()
 
-        if self.current:
-            await self.node._send(op='play', guildId=str(self.guild.id), track=self.current.id, startTime=int(self.position))
+        if self._track:
+            await self.node._send(op='play', guildId=str(self.guild.id), track=self._track.id, startTime=int(self.position))
             self.last_update = time.time() * 1000
 
-            if self.paused:
-                await self.node._send(op='pause', guildId=str(self.guild.id), pause=self.paused)
+            if self.is_paused():
+                await self.node._send(op='pause', guildId=str(self.guild.id), pause=self._paused)
 
         if self.volume != 100:
             await self.node._send(op='volume', guildId=str(self.guild.id), volume=self.volume)

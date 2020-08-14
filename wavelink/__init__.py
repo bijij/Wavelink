@@ -6,9 +6,10 @@ __version__ = '0.9.4'
 
 from .client import Client
 from .errors import *
-from .eqs import *
+from .eqs import Equalizer
 from .events import *
-from .player import *
+from .player import Player
 from .node import Node
-from .meta import WavelinkBotMixin, WavelinkCogMixin
+from .meta import WavelinkClientMixin, WavelinkCogMixin
+from .track import Track, TrackPlaylist
 from .websocket import WebSocket

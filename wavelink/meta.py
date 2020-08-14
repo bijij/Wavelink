@@ -3,22 +3,25 @@ import sys
 import traceback
 
 from .client import Client
-from .events import *
 from .node import Node
+from . import events
 
 
-class WavelinkBotMixin:
+__all__ = ('WavelinkClientMixin', 'WavelinkCogMixin')
+
+
+class WavelinkClientMixin:
     """Wavelink Client Mixin class.
 
     .. warning::
-        You must use this class in conjuction with a discord.py `commands.Bot`.
+        You must use this class in conjuction with a discord.py `discord.Client`.
 
     Example
     -------
     .. code::py
 
         # WavelinkBotMixin must be used along a discord.py bot.
-        class MyBot(commands.Bot, wavelink.WavelinkBotMixin):
+        class MyBot(discord.Client, wavelink.WavelinkClientMixin):
 
             ...
 
@@ -28,7 +31,7 @@ class WavelinkBotMixin:
 
         def __init__(self, *args, **kwargs):
             old_init(self, *args, **kwargs)
-            self.wavelink = Client(bot=self)
+            self.wavelink = Client(client=self)
 
         setattr(cls, '__init__', __init__)
 
@@ -37,7 +40,7 @@ class WavelinkBotMixin:
 
 
 class WavelinkCogMixin:
-    """Wavelink Cog Mixin class.
+    """Wavelink Mixin class.
 
     .. warning::
         You must use this class in conjuction with a discord.py `commands.Cog`.
@@ -78,7 +81,7 @@ class WavelinkCogMixin:
 
         return self
 
-    async def on_wavelink_error(self, listener,  error: Exception):
+    async def on_wavelink_error(self, listener, error: Exception):
         """Event dispatched when an error is raised during mixin listener dispatch.
 
         Parameters
@@ -100,7 +103,7 @@ class WavelinkCogMixin:
             The node associated with the listener event.
         """
 
-    async def on_track_start(self, node: Node, payload: TrackStart):
+    async def on_track_start(self, node: Node, payload: events.TrackStart):
         """Listener dispatched when a track starts.
 
         Parameters
@@ -111,7 +114,7 @@ class WavelinkCogMixin:
             The :class:`wavelink.events.TrackStart` payload.
         """
 
-    async def on_track_end(self, node: Node, payload: TrackEnd):
+    async def on_track_end(self, node: Node, payload: events.TrackEnd):
         """Listener dispatched when a track ends.
 
         Parameters
@@ -122,7 +125,7 @@ class WavelinkCogMixin:
             The :class:`wavelink.events.TrackEnd` payload.
         """
 
-    async def on_track_stuck(self, node: Node, payload: TrackStuck):
+    async def on_track_stuck(self, node: Node, payload: events.TrackStuck):
         """Listener dispatched when a track is stuck.
 
         Parameters
@@ -133,7 +136,7 @@ class WavelinkCogMixin:
             The :class:`wavelink.events.TrackStuck` payload.
         """
 
-    async def on_track_exception(self, node: Node, payload: TrackException):
+    async def on_track_exception(self, node: Node, payload: events.TrackException):
         """Listener dispatched when a track errors.
 
         Parameters
@@ -144,7 +147,7 @@ class WavelinkCogMixin:
             The :class:`wavelink.events.TrackException` payload.
         """
 
-    async def on_websocket_closed(self, node: Node, payload: WebsocketClosed):
+    async def on_websocket_closed(self, node: Node, payload: events.WebsocketClosed):
         """Listener dispatched when a node websocket is closed by lavalink.
 
         Parameters
