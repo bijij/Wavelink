@@ -3,7 +3,7 @@ import wavelink
 from discord.ext import commands
 
 
-class Bot(commands.Bot):
+class Bot(commands.Bot, wavelink.WavelinkClientMixin):
 
     def __init__(self):
         super(Bot, self).__init__(command_prefix=['audio ', 'wave ', 'aw '])
@@ -44,9 +44,8 @@ class Music(commands.Cog):
             except AttributeError:
                 raise discord.DiscordException('No channel to join. Please either specify a valid channel or join one.')
 
-        player = self.bot.wavelink.get_player(ctx.guild.id)
         await ctx.send(f'Connecting to **`{channel.name}`**')
-        await player.connect(channel.id)
+        await channel.connect(cls=wavelink.Player)
 
     @commands.command()
     async def play(self, ctx, *, query: str):

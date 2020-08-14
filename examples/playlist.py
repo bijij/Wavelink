@@ -30,10 +30,10 @@ from discord.ext import commands
 from typing import Union
 
 
-RURL = re.compile('https?:\/\/(?:www\.)?.+')
+RURL = re.compile(r'https?:\/\/(?:www\.)?.+')
 
 
-class Bot(commands.Bot):
+class Bot(commands.Bot, wavelink.WavelinkClientMixin):
 
     def __init__(self):
         super(Bot, self).__init__(command_prefix=['audio ', 'wave ', 'aw ', 'link '])
@@ -78,14 +78,18 @@ class MusicController:
             await self.next.wait()
 
 
+def is_connected(self, ctx):
+    player = ctx.guild.voice_client
+    if not isinstance(player, wavelink.Player) or not player.is_connected():
+        raise commands.CheckFailure('A player is not running in this server.')
+    return True
+
+
 class Music(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
         self.controllers = {}
-
-        if not hasattr(bot, 'wavelink'):
-            self.bot.wavelink = wavelink.Client(bot=self.bot)
 
         self.bot.loop.create_task(self.start_nodes())
 
@@ -142,7 +146,7 @@ class Music(commands.Cog):
         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
     @commands.command(name='connect')
-    async def connect_(self, ctx, *, channel: discord.VoiceChannel=None):
+    async def connect_(self, ctx, *, channel: discord.VoiceChannel = None):
         """Connect to a valid voice channel."""
         if not channel:
             try:
@@ -150,9 +154,8 @@ class Music(commands.Cog):
             except AttributeError:
                 raise discord.DiscordException('No channel to join. Please either specify a valid channel or join one.')
 
-        player = self.bot.wavelink.get_player(ctx.guild.id)
         await ctx.send(f'Connecting to **`{channel.name}`**', delete_after=15)
-        await player.connect(channel.id)
+        await channel.connect(cls=wavelink.Player)
 
         controller = self.get_controller(ctx)
         controller.channel = ctx.channel
@@ -168,8 +171,8 @@ class Music(commands.Cog):
         if not tracks:
             return await ctx.send('Could not find any songs with that query.')
 
-        player = self.bot.wavelink.get_player(ctx.guild.id)
-        if not player.is_connected:
+        player = ctx.guild.voice_client
+        if player is None or not player.is_connected():
             await ctx.invoke(self.connect_)
 
         track = tracks[0]
@@ -179,19 +182,21 @@ class Music(commands.Cog):
         await ctx.send(f'Added {str(track)} to the queue.', delete_after=15)
 
     @commands.command()
+    @commands.check(is_connected)
     async def pause(self, ctx):
         """Pause the player."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
-        if not player.is_playing:
+        player = ctx.guild.voice_client
+        if not player.is_playing():
             return await ctx.send('I am not currently playing anything!', delete_after=15)
 
         await ctx.send('Pausing the song!', delete_after=15)
         await player.set_pause(True)
 
     @commands.command()
+    @commands.check(is_connected)
     async def resume(self, ctx):
         """Resume the player from a paused state."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
         if not player.paused:
             return await ctx.send('I am not currently paused!', delete_after=15)
 
@@ -199,20 +204,22 @@ class Music(commands.Cog):
         await player.set_pause(False)
 
     @commands.command()
+    @commands.check(is_connected)
     async def skip(self, ctx):
         """Skip the currently playing song."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
 
-        if not player.is_playing:
+        if not player.is_playing():
             return await ctx.send('I am not currently playing anything!', delete_after=15)
 
         await ctx.send('Skipping the song!', delete_after=15)
         await player.stop()
 
     @commands.command()
+    @commands.check(is_connected)
     async def volume(self, ctx, *, vol: int):
         """Set the player volume."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
         controller = self.get_controller(ctx)
 
         vol = max(min(vol, 1000), 0)
@@ -222,9 +229,10 @@ class Music(commands.Cog):
         await player.set_volume(vol)
 
     @commands.command(aliases=['np', 'current', 'nowplaying'])
+    @commands.check(is_connected)
     async def now_playing(self, ctx):
         """Retrieve the currently playing song."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
 
         if not player.track:
             return await ctx.send('I am not currently playing anything!')
@@ -235,9 +243,10 @@ class Music(commands.Cog):
         controller.now_playing = await ctx.send(f'Now playing: `{player.track}`')
 
     @commands.command(aliases=['q'])
+    @commands.check(is_connected)
     async def queue(self, ctx):
         """Retrieve information on the next 5 songs from the queue."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
         controller = self.get_controller(ctx)
 
         if not player.track or not controller.queue._queue:
@@ -251,9 +260,10 @@ class Music(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command(aliases=['disconnect', 'dc'])
+    @commands.check(is_connected)
     async def stop(self, ctx):
         """Stop and disconnect the player and controller."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
 
         try:
             del self.controllers[ctx.guild.id]
@@ -265,9 +275,10 @@ class Music(commands.Cog):
         await ctx.send('Disconnected player and killed controller.', delete_after=20)
 
     @commands.command()
+    @commands.check(is_connected)
     async def info(self, ctx):
         """Retrieve various Node/Server/Player information."""
-        player = self.bot.wavelink.get_player(ctx.guild.id)
+        player = ctx.guild.voice_client
         node = player.node
 
         used = humanize.naturalsize(node.stats.memory_used)
