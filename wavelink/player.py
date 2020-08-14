@@ -185,9 +185,7 @@ class Player(discord.VoiceProtocol):
             song to finish playing.
         """
         if replace or not self.is_playing():
-            self.last_update = 0
-            self.last_position = 0
-            self.position_timestamp = 0
+            self.update_state({'state': {}})
             self._paused = False
         else:
             return
